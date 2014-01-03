@@ -1,0 +1,249 @@
+:- import append/3 from basics.
+:- import memberchk/2 from basics.
+:- import member/2 from basics.
+:- dynamic strictkb/1.
+:- dynamic defeasiblekb/1.
+:- dynamic definitelykb/1.
+:- dynamic defeasiblykb/1.
+:- dynamic minusdefinitelykb/1.
+:- dynamic minusdefeasiblykb/1.
+:- dynamic factkb/1.
+:- dynamic check/1.
+:- dynamic supkb/1.
+
+%METAPROGRAM
+/* definition of rules */
+strictRule(Name, Head, Body) :- strictkb(K), member([Name, Head, Body], K).
+defeasibleRule(Name, Head, Body) :- defeasiblekb(K), member([Name, Head, Body], K).
+
+supportive_rule(Name, Head, Body) :- strictRule(Name, Head, Body).
+supportive_rule(Name, Head, Body) :- defeasibleRule(Name, Head, Body).
+
+/*rule R with head X is unblocked when there is not an undefeated conflicting rule, or no conflicting rule exists*/
+unblocked(_,X):- negation(X,X1), xsb_meta_not(supportive_rule(_,X1,_)).
+unblocked(_,X):- negation(X,X1), xsb_meta_not(undefeated(X1)).
+
+/*rule R with head X is blocked either if its premises are not defeasibly provable, or if it is defeated*/
+blocked(R,X):- supportive_rule(R,X,L), xsb_meta_not(defeasibly_provable(L)).
+blocked(R,X):- supportive_rule(R,X,L), defeasibly_provable(L), defeated(R,X,_).
+
+/*a literal is undefeated when it is supported by a defeasible rule which in not blocked*/
+undefeated(X):- supportive_rule(S,X,_), xsb_meta_not(blocked(S,X)).
+
+/*rule S with head X is defeated when there is a conflicting rule, which is superior and its premises are defeasibly provable*/
+defeated(S,X,T):- negation(X,X1), supportive_rule(T,X1,V), defeasibly_provable(V), sup(T,S).
+
+negation(~(X),X):- !.
+negation(X,~(X)).
+
+xsb_meta_not(X) :- not(X).
+
+%check definite
+definitely(X) :- definitelyCheck(X, printOn).
+definitely(X, R) :- definitelyCheck(X, R, printOn).
+
+definitelyCheck(X, Print):- Print=printOn, factkb(F), memberchk(X, F), addDefinitely(X).
+definitelyCheck(X, Print):- Print=printOff, factkb(F), memberchk(X, F).
+definitelyCheck(X, _):- definitelykb(K), memberchk(X, K).
+definitelyCheck(X, Print):- logError(Print, [X, ' is neither a fact nor has yet been proven.']).
+
+definitelyCheck(X, R, Print):- Print=printOn, stated_strict(R, X, L), definitely_provable(L), addDefinitely(X).
+definitelyCheck(X, R, Print):- Print=printOff, stated_strict(R, X, L), definitely_provable(L).
+definitelyCheck(X, R, Print):- stated_strict(R, X, L), !, logError(Print, 
+                ['Unable to determine if rule ', R, ' can trigger because its conditions [', L, '] have not yet been proven definitely']).
+definitelyCheck(X, R, Print):- stated_strict(R, _, _), !, logError(Print, [R, ' has not ', X, ' as head.']).
+definitelyCheck(_, R, Print):- logError(Print, [R, ' does not exist.']).
+
+definitely_provable([X1|X2]):- definitely_provable(X1), definitely_provable(X2).
+definitely_provable(X):- definitelykb(K), memberchk(X, K).
+definitely_provable([]).
+
+
+not_definitely(X) :- minusdefinitelykb(K), memberchk(X, K).
+not_definitely(X) :- stated_strict(R, X, L), not(minus_definitely_list(L)),not(definitely_provable(L)), !, logError(printOn, 
+                ['Unable to determine if rule ', R, ' can trigger because its conditions [', L, '] have not yet been proven definitely']).
+        not_definitely(X) :- not(definitelyCheck(X, printOff)), not(definitelyCheck(X, _, printOff)), addMinusDefinitely(X).
+not_definitely(X) :- definitelyCheck(X, printOff), !, logError(printOn, [X, ' is already proven to be definitely true.']).
+not_definitely(X) :- definitelyCheck(X, R, printOff), !, logError(printOn, [X, ' can been proven definitely through rule ', R]).
+
+minus_definitely_list(X1):- minusdefinitelykb(K), memberchk(X1, K).
+minus_definitely_list([X1|_]):- minusdefinitelykb(K), memberchk(X1, K).
+minus_definitely_list([_|X2]):- minus_definitely_list(X2).
+
+
+%check defeasible
+defeasibly(X):- defeasiblyCheck(X, printOn).
+defeasibly(X, R):- defeasiblyCheck(X, R, printOn).
+
+
+defeasiblyCheck(X, _):- defeasiblykb(K), memberchk(X, K).
+defeasiblyCheck(X, Print):- Print=printOn, definitelyCheck(X, printOff), addDefeasibly(X).
+defeasiblyCheck(X, Print):- Print=printOff, definitelyCheck(X, printOff).
+defeasiblyCheck(X, Print):- logError(Print, [X, ' has not yet been proven neither defeasibly nor definitely.']).
+% defeasiblyCheck(X, _):- stated_fact(X), addDefeasibly(X). % this is a subcase of the above
+defeasiblyCheck(X, R, Print):- Print=printOn, addCheck(X), negation(X,X1), supportive_rule(R,X,L), addCheck(R), defeasibly_provable(L),
+                xsb_meta_not(definitelyCheck(X1, printOff)), not(hasAttackingRule(X, R, printOn)), addDefeasibly(X).
+defeasiblyCheck(X, R, Print):- Print=printOff, addCheck(X), negation(X,X1), supportive_rule(R,X,L), addCheck(R), defeasibly_provable(L),
+                xsb_meta_not(definitelyCheck(X1, printOff)), not(hasAttackingRule(X, R, printOff)).
+defeasiblyCheck(_, R, Print):- not(supportive_rule(R,_,_)), !, logError(Print, ['There is no rule ', R, ' in the theory.']).
+defeasiblyCheck(X, R, Print):- not(supportive_rule(R,X,_)), !, logError(Print, ['Rule ', R, ' does not have ', X, ' as head']).
+defeasiblyCheck(X, R, Print):- supportive_rule(R,X,L), not(defeasibly_provable(L)), !,
+                logError(Print, ['Unable to determine if rule ', R, ' can trigger because its conditions [', L, '] have not yet been proven defeasibly']).
+defeasiblyCheck(X, _, Print):- negation(X,X1), definitelyCheck(X1, printOff), !,
+                logError(Print, ['The negation of ', X, ': ', X1 ,' has been proven definitely']).
+
+
+defeasibly_provable([X1|X2]):- defeasibly_provable(X1), defeasibly_provable(X2).
+defeasibly_provable(X):- defeasiblykb(K), memberchk(X, K).
+defeasibly_provable([]).
+
+
+
+
+
+not_defeasibly(X) :- minusdefeasiblykb(K), memberchk(X, K).
+not_defeasibly(X) :-  supportive_rule(R,X,L), not(minus_defeasibly_list(L)), not(defeasibly_provable(L)), !,
+                logError(printOn, ['Unable to determine if rule ', R, ' can trigger because its conditions [', L, '] have not yet been proven defeasibly']).
+not_defeasibly(X) :- not(defeasiblyCheck(X, printOff)), not(defeasiblyCheck(X, _, printOff)), addMinusDefeasibly(X).
+not_defeasibly(X) :- defeasiblyCheck(X, printOff), !, logError(printOn, [X, ' is already proven to be defeasibly true.']).
+not_defeasibly(X) :- defeasiblyCheck(X, R, printOff), !, logError(printOn, [X, ' can been proven defeasibly through rule ', R]).
+
+
+minus_defeasibly_list(X1):- minusdefeasiblykb(K), memberchk(X1, K).
+minus_defeasibly_list([X1|_]):- minusdefeasiblykb(K), memberchk(X1, K).
+minus_defeasibly_list([_|X2]):- minus_defeasibly_list(X2).
+
+
+
+hasAttackingRule(X, R, Print) :- negation(X, NegX), supportive_rule(AttackingR, NegX, _), hasAttackingRule(X, R, AttackingR, Print).
+
+% if AttackingR < R, there is no problem
+hasAttackingRule(_, R, AttackingR, _) :- sup(R, AttackingR), !, fail.
+% if AttackingR's conditions are not defeasibly provable, there is no problem
+hasAttackingRule(X, _, AttackingR, _) :-  negation(X, NegX), supportive_rule(AttackingR, NegX, L), minus_defeasibly_list(L), !, fail.
+hasAttackingRule(X, R, AttackingR, Print) :- /* no info about connection between rules R and AttackingR... */
+                /* no suppirior rule exists, so AttackingR attacks R*/ negation(X, NegX),
+                not(sup(_, AttackingR)), sup(AttackingR, R), supportive_rule(AttackingR, NegX, L), defeasibly_provable(L),
+                not(logError(Print, ['Rule ', R, ' is defeated by ', AttackingR, '.'])).
+hasAttackingRule(_, R, AttackingR, Print) :- not(sup(_, AttackingR)), sup(AttackingR, R),
+                not(logError(Print, ['Rule ', R, ' may be defeated by ', AttackingR, ' (there is no information about some conditions of ', AttackingR, ').'])).
+hasAttackingRule(_, _, AttackingR, Print) :- /* no info about connection between rules R and AttackingR... */
+                /* no suppirior rule exists, so AttackingR attacks R*/
+                not(sup(_, AttackingR)),
+                not(logError(Print, ['Conflict with attacking rule ', AttackingR, '.'])).        
+hasAttackingRule(X, _, AttackingR, _) :- sup(RNew, AttackingR), supportive_rule(RNew, X, Conditions),
+                defeasibly_provable(Conditions), !, fail.
+hasAttackingRule(_, _, AttackingR, Print) :- sup(RNew, AttackingR), 
+                not(logError(Print, ['Conflict with attacking rule ', AttackingR, '. (', RNew, '>', AttackingR,
+                ', but ', RNew, ' is not triggered.)'])).
+
+
+%add variable X to the definitely knowledge base
+addDefinitely(X) :- definitelykb(K), retractall(definitelykb(_)), append(K, [X], Knew), assert(definitelykb(Knew)), addDefeasibly(X), addCheck(X).
+
+%add variable X to the defeasibly knowledge base
+addDefeasibly(X) :- defeasiblykb(K), retractall(defeasiblykb(_)), append(K, [X], Knew), assert(defeasiblykb(Knew)).
+
+%add variable X to the defeasibly knowledge base
+addMinusDefeasibly(X) :- minusdefeasiblykb(K), retractall(minusdefeasiblykb(_)), append(K, [X], Knew), assert(minusdefeasiblykb(Knew)).
+
+%add variable X to the defeasibly knowledge base
+addMinusDefinitely(X) :- minusdefinitelykb(K), retractall(minusdefinitelykb(_)), append(K, [X], Knew), assert(minusdefinitelykb(Knew)).
+
+
+%add to checked (for variables AND RULES that are examined).
+addCheck(X) :- check(C), (xsb_meta_not(memberchk(X, C)) ->retractall(check(_)), append(C, [X], Cnew), assert(check(Cnew))
+                ;1=1).
+
+%ask if X is checked
+checked([X1|X2]):- checked(X1), checked(X2).
+checked(X) :- check(C), memberchk(X, C).
+checked([]).
+
+/*RULES*/
+%check if a strict/defeasible rule has been stated
+stated_strict(N,H,B) :- xsb_meta_not(strict_warning([N,H,B])), strictkb(F), memberchk([N,H,B], F), check(C), memberchk([N,H,B], C).
+stated_defeasible(N,H,B) :- xsb_meta_not(defeasible_warning([N,H,B])), defeasiblekb(D), memberchk([N,H,B], D), check(C), memberchk([N,H,B], C).
+
+%warning if there is such rule (which can trigger), but its not stated in the proof
+strict_warning([N, H, B]) :- strictkb(S), memberchk([N, H, B], S),      /*Rule is in theory*/
+                check(C), xsb_meta_not(memberchk([N, H, B], C)),        /*Rule is stated in proof*/
+                memberchk(B, C), definitely_provable(B),                /*Rule can trigger*/
+                logWarning(printOn, ['You have not mentioned strict rule ', N]).
+defeasible_warning([N, H, B]) :- defeasiblekb(D), memberchk([N, H, B], D),      /*Rule is in theory*/
+                check(C), xsb_meta_not(memberchk([N, H, B], C)),                /*Rule is stated in proof*/
+                memberchk(B, C), defeasibly_provable(B),                        /*Rule can trigger*/
+                logWarning(printOn, ['You have not mentioned defeasible rule ', N]).
+
+%check if a strict/defeasible rule exists in the theory
+strict_error(Name, Head, Body) :- strictkb(S), xsb_meta_not(memberchk([Name, Head, Body], S)),
+                logError(printOn, ['Strict rule ', Name, ' does not exist in the theory!']).
+defeasible_error(Name, Head, Body) :- defeasiblekb(D), xsb_meta_not(memberchk([Name, Head, Body], D)),
+                logError(printOn, ['Defeasible rule ', Name, ' does not exist in the theory!']), nl.
+
+%add strict/defeasible rules (no duplicates)
+addStrict(Name, Head, Body) :- strictkb(S), (xsb_meta_not(memberchk([Name, Head, Body], S)) ->
+                retractall(strictkb(_)), append(S, [[Name, Head, Body]], Snew), assert(strictkb(Snew));1=1),
+                strict(Name, Head, Body).
+addDefeasible(Name, Head, Body) :- defeasiblekb(D), (xsb_meta_not(memberchk([Name, Head, Body], D)) -> retractall(defeasiblekb(_)),
+                append(D, [[Name, Head, Body]], Dnew), assert(defeasiblekb(Dnew));1=1), defeasible(Name, Head, Body).
+
+%proof claims that a rule is strict/defeasible. If its true, add the rule to the stated rules.
+strict(Name, Head, Body) :- addCheck([Name, Head, Body]).
+defeasible(Name, Head, Body) :- addCheck([Name, Head, Body]).
+
+%add priorities (avoid duplicates)
+addSup(R1, R2) :- supkb(S), (xsb_meta_not(memberchk([R1, R2], S)) ->
+                retractall(supkb(_)), append(S, [[R1, R2]], Snew), assert(supkb(Snew));1=1).
+
+%check priorities
+sup(R1, R2) :- supkb(S), memberchk([R1, R2], S).
+
+
+/*FACTS */
+%check if X is a fact and if it has been stated
+stated_fact(X) :- xsb_meta_not(fact_warning(X)), factkb(F), memberchk(X, F), check(C), memberchk(X, C).
+
+%warning if X is a fact but not stated
+fact_warning(X) :- factkb(F), memberchk(X, F), check(C), xsb_meta_not(memberchk(X, C)),
+        logWarning(printOn, ['You have not stated that ', X, ' is a fact!']).
+
+%check if a fact in the proof is a fact in the theory
+fact_error(X) :- factkb(F), memberchk(X, F).
+fact_error(X) :- logError(printOn, [X, ' is not a fact!']).
+
+%add fact
+addFact(X) :- factkb(F), (xsb_meta_not(memberchk(X, F)) -> retractall(factkb(_)), 
+                append(F, [X], Fnew), assert(factkb(Fnew));
+                1=1).
+
+%proof claims that X is a fact. If its true, add the fact to the stated facts.
+fact(X) :- fact_error(X), addDefinitely(X).
+
+
+%initialize knowledge bases, also load theory
+init :- retractall(definitelykb(_)),retractall(defeasiblykb(_)),  retractall(minusdefinitelykb(_)),retractall(minusdefeasiblykb(_)),
+                retractall(check(_)), retractall(strictkb(_)), retractall(defeasiblekb(_)), retractall(factkb(_)), retractall(supkb(_)),
+                assert(definitelykb([])), assert(defeasiblykb([])),  assert(minusdefinitelykb([])), assert(minusdefeasiblykb([])), assert(check([])), 
+                assert(strictkb([])), assert(defeasiblekb([])), assert(factkb([])), assert(supkb([])).   
+
+
+logError(Print, ErrorMsg) :- Print = 'printOn', append(['ERROR: '], ErrorMsg, L), writeAll(L), !, fail.
+logError(Print, _) :- Print = 'printOff', !, fail.
+logError(Print, Y) :- write('Illegal call to logError '), write(Print), write(' '), write(Y), nl, fail.
+
+logWarning(printOn, WarningMsg) :- append(['Warning: '], WarningMsg, L), writeAll(L).
+logWarning(Print, _) :- Print = 'printOff'.
+logWarning(Print, Y) :- write('Illegal call to logWarning '), write(Print), write(' '), write(Y), nl, fail.
+
+writeAll([H | T]) :- write(H), writeAll(T).
+writeAll([]) :- nl.
+
+
+
+%IGNORE
+%avoid errors by declaring those dummies (avoid "no usermod strict/3 exists" etc)
+%strict(dum1,dum2,dum3).
+%defeasible(dum4,dum5,dum6).
+%sup(dum4,dum1).
+%fact(dum7).
