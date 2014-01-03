@@ -1,5 +1,4 @@
-#summary One-sentence summary of this page.
-
+#summary useful information about the proof checker
 = Introduction =
 
 The goal of a proof checker is to decide whether the provided proof, given a theory, is valid or not. In the case the proof is not valid, an appropriate error message is returned, depending on the nature of the problem. Our approach was to modify the prolog code of the metaprogam that is used to turn simple Prolog into DR-Prolog. Every decision is made in O(1) time, since recursion is avoided, as described below. Finally, a set of 11 examples were created to exhibit as many error cases/messages as possible, as well as correct proofs that return no error messages.
