@@ -1,0 +1,420 @@
+%initialize knowledge bases, also load theory
+runAll :- runAll(0, 10).
+
+runAll(I, N) :- I =< N, runAll(I), I1 is I + 1, runAll(I1, N).
+runAll(I, N) :- I > N.
+
+% strict rules
+runAll(0) :- runAll(0, 00, 09).
+runAll(1) :- runAll(1, 10, 12).
+runAll(2) :- runAll(2, 20, 24).
+% defeasible rules
+runAll(3) :- runAll(3, 30, 38).
+% defeasible rules: team defeat
+runAll(4) :- runAll(4, 40, 45).
+runAll(5) :- runAll(5, 50, 54).
+runAll(6) :- runAll(6, 60, 62).
+runAll(7) :- runAll(7, 70, 72).
+runAll(8) :- runAll(8, 80, 84).
+runAll(9) :- runAll(9, 90, 94).
+runAll(10) :- runAll(10, 100, 103).
+
+acceptable(D) :- D = dummy.
+
+runAll(T, I, N) :- I =< N, init, load_theory(T), nl,
+		write('Running '), write(I), nl, example(I),
+	       	I1 is I+1, write('Test successful.'), nl, runAll(T, I1, N).
+runAll(_, I, N) :- I =< N, write('>>>Test failed.'), nl.
+runAll(_, I, N) :- I > N.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 0:
+% r1: -> a
+% r2: a -> b
+
+load_theory(0) :- addStrict(r1, a, []), addStrict(r2, b, a).
+
+%SUCCESSFUL TESTS
+example(00) :- definitely(a, r1), definitely(b, r2). 
+example(01) :- definitely(a, r1), definitely_provable(a).
+example(02) :- not_definitely(dummy). 
+
+%UNSUCCESSFUL TESTS
+% expecting: "ERROR: a is not a fact!"
+example(03) :- not(fact(a)). 
+% expecting: "ERROR: b is neither a fact nor has yet be proven."
+example(04) :- not(definitely(b)). 
+% expecting: "ERROR: a is neither a fact nor has yet be proven."
+example(05) :- not(definitely(a)). 
+% expecting: "ERROR: r2 has not a as head."
+example(06) :- not(definitely(a,r2)). 
+% expecting: "ERROR: r3 does not exist."
+example(07) :- not(definitely(a,r3)). 
+% expecting: "ERROR: "a is already proven to be definitely true."
+example(08) :- definitely(a, r1), not(not_definitely(a)).
+% expecting: "ERROR: "a can be proven definitely through rule r1."
+example(09) :- not(not_definitely(a)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 1:
+% r1: -> a
+% r2: -> ~a
+
+load_theory(1) :- addStrict(r1, a, []), addStrict(r2, ~(a), []).
+
+%SUCCESSFUL TESTS
+example(10) :- definitely(a, r1), definitely(~(a), r2).
+
+%UNSUCCESSFUL TESTS
+% expecting: "ERROR:  a can be proven definitely through rule r1
+example(11) :- not(not_definitely(a)).
+% expecting: "ERROR:  ~(a) can be proven definitely through rule r2
+example(12) :- not(not_definitely(~(a))).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 2:
+% r1: a -> b
+% a.
+
+load_theory(2) :- addFact(a), addStrict(r1, b, a).
+
+%SUCCESSFUL TESTS
+example(20) :- fact(a), strict(r1, b, a), definitely(b, r1).
+example(21) :- definitely(a), definitely(b, r1).
+
+%UNSUCCESSFUL TESTS
+% expecting: "ERROR: a is already proven to be definitely true."
+example(22) :- not(not_definitely(a)).
+% expecting: "ERROR: b can be proven definitely through rule r1."
+example(23) :- definitely(a), not(not_definitely(b)).
+% expecting: "ERROR: b can be proven definitely through rule r1."
+example(24) :- not(not_definitely(b)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 3:
+% r1: => a
+% r2: a => b
+% r3: a => ~b
+% r4: => ~c  
+% r3 > r2
+% c.
+
+load_theory(3) :- addFact(c), addDefeasible(r1, a, []), addDefeasible(r2, b, a),
+                addDefeasible(r3, ~(b), a), addDefeasible(r4, ~(c), []), addSup(r3, r2).
+
+%SUCCESSFUL TEST
+example(30) :- defeasibly(a, r1), defeasibly(~(b), r3).
+
+%UNSUCCESSFUL TESTS
+% expecting: "ERROR: a has not yet been proven neither defeasibly nor definitely".
+example(31) :- not(defeasibly(a)).
+% expecting: "ERROR: There is no rule rDummy in the theory."
+example(32) :- not(defeasibly(a, rDummy)).
+% expecting: "ERROR: Rule r2 does not have a as head."
+example(33) :- not(defeasibly(a, r2)).
+% expecting: "ERROR: Conditions of rule r3: a have not yet been proven defeasibly."
+example(34) :- not(defeasibly(~(b), r3)).
+% expecting: "ERROR: Rule r2 is defeated by r3."
+example(35) :- defeasibly(a, r1), not(defeasibly(b, r2)).
+% expecting: "ERROR: The negation of ~(c): c has been proven definitely."
+example(36) :- definitely(c), not(defeasibly(~(c), r4)).
+% expecting: "ERROR: a can be proven defeasibly through rule r1."
+example(37) :- not(not_defeasibly(a)).
+% expecting: "ERROR: ~(b) can be proven defeasibly through rule r3."
+example(38) :- defeasibly(a, r1), not(not_defeasibly(~(b))).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 4 (Team Defeat - Team "e" wins):
+% r1: a => e
+% r2: b => e
+% r3: c => ~e
+% r4: d => ~e  
+% r1 > r3
+% r2 > r4
+% a.
+% b.
+% c.
+% d.
+
+load_theory(4) :- addFact(a), addFact(b), addFact(c), addFact(d),
+		addDefeasible(r1, e, a), addDefeasible(r2, e, b),
+	       	addDefeasible(r3, ~(e), c), addDefeasible(r4, ~(e), d),
+		addSup(r1, r3), addSup(r2, r4).
+
+
+%SUCCESSFUL TESTS
+example(40) :- fact(a), fact(b), fact(c), fact(d),
+		defeasibly(a), defeasibly(b), defeasibly(c), defeasibly(d),
+		defeasibly(e, r1).
+example(41) :- defeasibly(a), defeasibly(b), defeasibly(c), defeasibly(d),
+		defeasibly(e, r1).
+example(42) :- defeasibly(a), defeasibly(b), defeasibly(c), defeasibly(d),
+		defeasibly(e, r2).
+
+%UNSUCCESSFUL TESTS
+% expecting: "ERROR: Conflict with attacking rule r3. (r1>r3, but r1 is not triggered.)"
+example(43) :- defeasibly(b), not(defeasibly(e, r2)).
+% expecting: "ERROR: Rule r3 is defeated by r1."
+example(44) :- defeasibly(b), defeasibly(c), not(defeasibly(~(e), r3)).
+% expecting: "ERROR: Rule r3 is defeated by r1."
+example(45) :- defeasibly(a), defeasibly(c), not(defeasibly(~(e), r3)).
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 5:
+% r1: => ~e
+% r2: => e
+% r3: => ~e
+% r1 > r2
+% r2 > r3
+load_theory(5) :- addDefeasible(r1, ~(e), []), addDefeasible(r2, e, []),
+	       addDefeasible(r3, ~(e), []), addSup(r1, r2), addSup(r2, r3).
+
+%SUCCESSFUL TESTS
+example(50) :- defeasibly(~(e), r1).
+example(51) :- defeasibly(~(e), r3).
+example(52) :- not_defeasibly(e). 
+
+%UNSUCCESSFUL TESTS
+% expecting: "ERROR: Rule r2 is defeated by r1."
+example(53) :- not(defeasibly(e, r2)).
+% expecting: "ERROR: ~(e) can be proven defeasibly through rule r1."
+example(54) :- not(not_defeasibly(~(e))).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 6:
+% r1: => e
+% r2: => ~e
+% r2 > r1
+
+load_theory(6) :- addDefeasible(r1, e, []), addDefeasible(r2, ~(e), []),
+	       addSup(r2, r1).
+
+%SUCCESSFUL TESTS
+example(60) :- not_defeasibly(e). 
+example(61) :- defeasibly(~(e), r2).
+
+%UNSUCCESSFUL TEST
+% expecting: "ERROR: Rule r1 is defeated by r2."
+example(62) :- not(defeasibly(e, r1)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 7:
+% r1: => e
+% r2: => ~e
+% r3: a => e
+% r2 > r1
+% r3 > r2
+
+load_theory(7) :- addDefeasible(r1, e, []), addDefeasible(r2, ~(e), []), addDefeasible(r3, e, a),
+	       addSup(r2, r1), addSup(r3, r2).
+
+%SUCCESSFUL TEST
+example(70) :- not_defeasibly(~(e)).
+
+%UNSUCCESSFUL TEST
+% expecting: "ERROR: Conflict with attacking rule r2. (r3>r2, but r3 is not triggered.)"
+example(71) :- not(defeasibly(e, r1)).
+% expecting: "ERROR: Conditions of rule r3: a have not yet been proven defeasibly."
+example(72) :- not(defeasibly(e, r3)).
+
+%load_theory(7) :- addDefeasible(r1, a, []), addDefeasible(r2, ~(a), b), addSup(r2, r1).
+%example(70) :-  not_defeasibly(b), defeasibly(a, r1).
+%example(71) :- not(defeasibly(a, r1)).
+%example(72) :- not(defeasibly(a, r1)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 8:
+% r1: [a, d] -> b
+% r2: b -> c
+% a.
+
+load_theory(8) :- addFact(a), addStrict(r1, b, [a, d]), addStrict(r2, c, b).
+
+%SUCCESSFUL TEST
+example(80) :- definitely(a),not_definitely(d), not_definitely(dum), not_definitely(b).
+
+%UNSUCCESSFUL TESTS
+example(81) :- not(not_definitely(c)).
+
+example(82) :- not(definitely(c)).
+
+example(83) :- definitely(a),not_definitely(d), not(definitely(b)).
+
+example(84) :- definitely(a),not(definitely(d)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 9 (same as theory 8 with defeasible rules):
+% r1: [a, d] => b
+% r2: b => c
+% a.
+
+load_theory(9) :- addFact(a), addDefeasible(r1, b, [a, d]), addDefeasible(r2, c, b).
+
+%SUCCESSFUL TEST
+example(90) :- defeasibly(a),not_defeasibly(d), not_defeasibly(dum), not_defeasibly(b).
+
+%UNSUCCESSFUL TESTS
+example(91) :- not(not_defeasibly(c)).
+
+example(92) :- not(defeasibly(c)).
+
+example(93) :- defeasibly(a),not_defeasibly(d), not(defeasibly(b)).
+
+example(94) :- definitely(a),not(definitely(d)).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Theory 10 (a bigger example)
+load_theory(10) :- 
+        addDefeasible(pass1, acceptableIdentification(Person), []), 
+        addDefeasible(pass2, ~(acceptableIdentification(Person)), [~(travelEurope(Person)), ~(hasPassport(Person))]), 
+        addDefeasible(pass3, ~(acceptableIdentification(Person)), [travelEurope(Person), ~(hasID(Person)), ~(hasPassport(Person))]), 
+        addSup(pass2, pass1), 
+        addSup(pass3, pass1), 
+        addDefeasible(sc1, acceptableSuitcase(Sc, Person), [hasSuitcase(Sc, Person)]), 
+        addDefeasible(sc2, ~(acceptableSuitcase(Sc, Person)), [hasSuitcase(Sc, Person), suitcaseContainsLiquid(Sc)]), 
+        addDefeasible(sc3, ~(acceptableSuitcase(Sc, Person)), [hasSuitcase(Sc, Person), suitcaseContainsGun(Sc), ~(personHoldsLicence(Person))]), 
+        addDefeasible(sc4, ~(acceptableSuitcase(Sc, Person)), [hasSuitcase(Sc, Person), suitcaseContainsSpray(Sc)]), 
+        addDefeasible(sc5, ~(acceptableSuitcase(Sc, Person)), [hasSuitcase(Sc, Person), suitcaseContainsExplosive(Sc)]), 
+        addDefeasible(sc6, ~(acceptableSuitcase(Sc, Person)), [hasSuitcase(Sc, Person), suitcaseContainsPuncheon(Sc)]), 
+        addSup(sc2, sc1), addSup(sc3, sc1), addSup(sc4, sc1), addSup(sc5, sc1), addSup(sc6, sc1), 
+        addDefeasible(age1, acceptableAge(Person), []), 
+        addDefeasible(age2, ~(acceptableAge(Person)), [ageLessThan12(Person), ~(accompanied(Person))]), 
+        addDefeasible(age3, ~(acceptableAge(Person)), [ageLessThan6(Person), ~(accompaniedParent(Person))]), 
+        addSup(age2, age1), addSup(age3, age1), 
+        addDefeasible(preg1, pregnantCheck(Person), []), 
+        addDefeasible(preg2, ~(pregnantCheck(Person)), [isPregnant(Person), pregnantMoreThan7Months(Person)]), 
+        addSup(preg2, preg1), 
+        addDefeasible(pet1, acceptablePets(Person), []), 
+        addDefeasible(pet2, ~(acceptablePets(Person)), [hasPets(Person), ~(areVaccinated(Person))]), 
+        addDefeasible(pet3, ~(acceptablePets(Person)), [hasPets(Person), ~(haveChip(Person))]), 
+        addDefeasible(pet4, ~(acceptablePets(Person)), [hasPets(Person), ~(haveCage(Person))]), 
+        addSup(pet2, pet1), addSup(pet3, pet1), addSup(pet4, pet1), 
+        addDefeasible(r2, ~(acceptable(Person)), [~(hasTicket(Person))]), 
+        addDefeasible(r3, ~(acceptable(Person)), [~(acceptableIdentification(Person))]), 
+        addDefeasible(r4, ~(acceptable(Person)), [~(acceptableSuitcase(Sc, Person))]), 
+        addDefeasible(r5, ~(acceptable(Person)), [~(passedSecuritySearch(Person))]), 
+        addDefeasible(r6, ~(acceptable(Person)), [~(acceptableAge(Person))]), 
+        addDefeasible(r7, ~(acceptable(Person)), [~(pregnantCheck(Person))]), 
+        addDefeasible(r8, ~(acceptable(Person)), [~(acceptablePets(Person))]), 
+        addDefeasible(r1, acceptable(Person), []), 
+        addSup(r2, r1), addSup(r3, r1), addSup(r4, r1), addSup(r5, r1), addSup(r6, r1), addSup(r7, r1), addSup(r8, r1).
+
+theoryExtention(100) :-
+	addFact(travelEurope(jiannis)),
+	addFact(hasID(jiannis)),
+	addFact(hasTicket(jiannis)),
+	addFact(hasSuitcase(scA, jiannis)),
+	addFact(suitcaseContainsGun(scA)),
+	addFact(personHoldsLicence(jiannis)),
+	addFact(hasPets(jiannis)),
+	addFact(haveChip(jiannis)),
+	addFact(areVaccinated(jiannis)),
+	addFact(haveCage(jiannis)),
+	addFact(passedSecuritySearch(jiannis)).
+
+theoryExtention(101) :-
+	addFact(~(travelEurope(iwanna))),
+	addFact(isPregnant(iwanna)),
+	addFact(~(pregnantMoreThan7Months(iwanna))),
+	addFact(hasSuitcase(scC, iwanna)),
+	addFact(suitcaseContainsLiquid(scC)),
+	addFact(passedSecuritySearch(iwanna)),
+	addFact(hasPassport(iwanna)),
+	addFact(hasTicket(iwanna)).
+
+theoryExtention(102) :-
+        addFact(~(hasTicket(zwnianakis))), 
+	addFact(travelEurope(zwnianakis)),
+	addFact(~(hasID(zwnianakis))),
+	addFact(hasPassport(zwnianakis)),
+	addFact(hasSuitcase(scD, zwnianakis)),
+	addFact(suitcaseContainsPuncheon(scD)),
+	addFact(passedSecuritySearch(zwnianakis)).
+
+theoryExtention(103) :-
+    addFact(~(travelEurope(anna))),
+    addFact(hasID(anna)),	
+	addFact(ageLessThan6(anna)),
+	addFact(~(accompaniedParent(anna))),
+	addFact(hasPets(anna)),
+	addFact(haveChip(anna)),
+	addFact(~(areVaccinated(anna))),
+	addFact(haveCage(anna)),
+    addFact(hasTicket(anna)),
+	addFact(passedSecuritySearch(anna)),
+    addFact(hasSuitcase(sc, anna)), 
+	addFact(~(acceptablePets(anna))).
+
+example(100) :- theoryExtention(100),
+        % hasTicket
+        not_defeasibly(~(hasTicket(jiannis))),
+        % identification
+        defeasibly(travelEurope(jiannis)), not_defeasibly(~(hasId(jiannis))),
+        not_defeasibly(~(hasPassport(jiannis))), 
+        not_defeasibly(~(acceptableIdentification(jiannis))),
+        % security search
+        not_defeasibly(~(passedSecuritySearch(jiannis))),
+        % acceptable suitcase
+        defeasibly(hasSuitcase(scA, jiannis)), 
+	not_defeasibly(suitcaseContainsLiquid(scA)),	defeasibly(suitcaseContainsGun(scA)),
+        not_defeasibly(~(personHoldsLicence(jiannis))),	not_defeasibly(suitcaseContainsSpray(scA)),	
+        not_defeasibly(suitcaseContainsExplosive(scA)),	not_defeasibly(suitcaseContainsPuncheon(scA)),
+        not_defeasibly(~(acceptableSuitcase(scA, jiannis))),
+        % acceptable age
+        not_defeasibly(ageLessThan12(jiannis)),       not_defeasibly(ageLessThan6(jiannis)),
+        not_defeasibly(~(acceptableAge(jiannis))),
+        % pregnant check
+        not_defeasibly(isPregnant(jiannis)), not_defeasibly(~(pregnantCheck(jiannis))),
+        % acceptable pets
+        defeasibly(hasPets(jiannis)),                   not_defeasibly(~(haveChip(jiannis))),
+        not_defeasibly(~(areVaccinated(jiannis))),      not_defeasibly(~(haveCage(jiannis))),
+        not_defeasibly(~(acceptablePets(jiannis))),
+        % acceptable(jiannis)
+        defeasibly(acceptable(jiannis), r1).
+example(101) :- theoryExtention(101), 
+        % hasTicket
+        not_defeasibly(~(hasTicket(iwanna))), 
+        % identification
+        defeasibly(~(travelEurope(iwanna))), not_defeasibly(~(hasPassport(iwanna))),
+        not_defeasibly(~(acceptableIdentification(iwanna))),
+        % security search
+        not_defeasibly(~(passedSecuritySearch(iwanna))),
+        % acceptable suitcase
+        defeasibly(hasSuitcase(scC, iwanna)), defeasibly(suitcaseContainsLiquid(scC)),
+        defeasibly(~(acceptableSuitcase(scC, iwanna)), sc2),
+        % acceptable(iwanna)
+        not(defeasibly(acceptable(iwanna), r1)).
+example(102) :- theoryExtention(102), 
+        % hasTicket
+        defeasibly(~(hasTicket(zwnianakis))),
+        % acceptable(zwnianakis)
+        not(defeasibly(acceptable(zwnianakis), r1)).
+example(103) :- theoryExtention(103), 
+	% hasTicket
+	not_defeasibly(~(hasTicket(anna))),
+        % identification
+        defeasibly(~(travelEurope(anna))), defeasibly(hasID(anna)), not_defeasibly(~(hasPassport(anna))), 
+        not_defeasibly(~(acceptableIdentification(anna))), 
+	% security search
+        not_defeasibly(~(passedSecuritySearch(anna))),
+	% acceptable suitcase
+        defeasibly(hasSuitcase(sc, anna)), 
+	not_defeasibly(suitcaseContainsLiquid(sc)),	not_defeasibly(suitcaseContainsGun(sc)),
+	not_defeasibly(suitcaseContainsSpray(sc)),	not_defeasibly(suitcaseContainsExplosive(sc)),
+	not_defeasibly(suitcaseContainsPuncheon(sc)),
+        not_defeasibly(~(acceptableSuitcase(sc, anna))),
+	% acceptable age
+	not_defeasibly(ageLessThan12(anna)), defeasibly(~(accompaniedParent(anna))),
+	defeasibly(ageLessThan6(anna)), 
+	defeasibly(~(acceptableAge(anna)), age3),      
+        % acceptable(anna)
+        not(defeasibly(acceptable(anna), r1)).
